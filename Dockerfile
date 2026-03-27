@@ -1,18 +1,55 @@
-# Use official Nginx image as base (for serving static content)
-FROM nginx:alpine
+name: CI/CD Pipeline
 
-# Copy our app files into the default Nginx document root (/usr/share/nginx/html)
-COPY index.html /usr/share/nginx/html/
-COPY elements.html /usr/share/nginx/html/
-COPY generic.html /usr/share/nginx/html/
-COPY landing.html /usr/share/nginx/html/
-COPY assets /usr/share/nginx/html/assets
-COPY images /usr/share/nginx/html/images
-COPY LICENSE.txt /usr/share/nginx/html/
-COPY README.txt /usr/share/nginx/html/
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
-# Expose port 80 for HTTP access (Nginx listens on port 80 by default)
-EXPOSE 80
+jobs:
 
-# Run command when container starts up
-CMD ["nginx", "-g", "daemon off;"]
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/html5up-forty:latest
+
+  scan-trivy:
+    name: Security Scan with Trivy
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/html5up-forty:latest
+          format: table
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: scan-trivy
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy
+        run: echo "Déploiement effectué avec succès !"
